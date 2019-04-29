@@ -112,6 +112,16 @@ pub enum MuskieLogEntryHeaderValue {
     Int(i64)
 }
 
+impl MuskieLogEntryHeaderValue {
+    // XXX We should validate and handle this better.
+    pub fn string(&self) -> &String {
+        match self {
+            MuskieLogEntryHeaderValue::Str(s) => s,
+            _ => panic!("header value is not a string")
+        }
+    }
+}
+
 /*
  * This type only exists for us to be able to implement our own Debug trait.
  * It would be nice to at least enforce that the values are `i64`, but that
