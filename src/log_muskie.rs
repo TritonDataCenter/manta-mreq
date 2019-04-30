@@ -114,10 +114,20 @@ pub enum MuskieLogEntryHeaderValue {
 
 impl MuskieLogEntryHeaderValue {
     // XXX We should validate and handle this better.
+    // XXX should this be as_string()?
     pub fn string(&self) -> &String {
         match self {
             MuskieLogEntryHeaderValue::Str(s) => s,
             _ => panic!("header value is not a string")
+        }
+    }
+
+    // XXX We should validate and handle this better.
+    // XXX is our use of the as_i64() convention correct?
+    pub fn as_i64(&self) -> i64 {
+        match self {
+            MuskieLogEntryHeaderValue::Int(i64val) => *i64val,
+            _ => panic!("header value is not a number")
         }
     }
 }
@@ -132,6 +142,14 @@ impl MuskieLogEntryHeaderValue {
 #[serde(untagged)]
 pub enum MuskieLogEntryTimers {
     Timers(Map<String, serde_json::Value>)
+}
+
+impl MuskieLogEntryTimers {
+    pub fn map(&self) -> &Map<String, serde_json::Value> {
+        match self {
+            MuskieLogEntryTimers::Timers(map) => map
+        }
+    }
 }
 
 impl fmt::Debug for MuskieLogEntryTimers {

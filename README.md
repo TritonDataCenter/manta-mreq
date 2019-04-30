@@ -8,8 +8,6 @@ mreq is a small tool for summarizing the timeline of a Manta HTTP request.
 [See MANTA-4232 for details.](http://smartos.org/bugview/MANTA-4232)
 
 
-## Status
-
 **This program is a very rough, very early prototype.**  It's not useful for
 anything at all yet.
 
@@ -52,3 +50,26 @@ Nice-to-haves:
   mako-1.log mako-2.log`) and the command would figure out what each one was and
   incorporate the information, rather than requiring you to specify them in a
   particular order or having to specify what each one was.
+
+
+## Current status
+
+Currently, this can dump basic information about a Muskie request, but the
+output is still very much evolving.
+
+Next steps:
+- Fix the way we present relative latency for steps in the Muskie request
+  handling pipeline.  See the TODO where we invoke `timeline.add("client
+  generated Date header"`.  This may be a fair bit of work.
+  - Add the idea of nested timelines.
+  - Update the printout of the timeline as suggested.
+  - Also add the calculated total latency
+  - Consider adding the calculated latency-to-first-byte
+- See what else we should add to the output (e.g., response status code!)
+- Try with other types of requests:
+  - directory fetch (what I'm currently testing with)
+  - directory create
+  - object fetch and create
+    - will want to separate out latency-to-first-byte?
+- Consider filtering timeline events with elapsed time `>` 0 and `<1ms`
+- Lots of XXXs and TODOs
