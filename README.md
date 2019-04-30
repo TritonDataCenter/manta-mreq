@@ -58,12 +58,9 @@ Currently, this can dump basic information about a Muskie request, but the
 output is still very much evolving.
 
 Next steps:
-- Fix the way we present relative latency for steps in the Muskie request
-  handling pipeline.  See the TODO where we invoke `timeline.add("client
-  generated Date header"`.  This may be a fair bit of work.
-  - Add the idea of nested timelines.
-  - Update the printout of the timeline as suggested.
-  - Also add the calculated total latency
+- Improve the display of subtimelines so that it's less confusing what's going
+  on.
+- Add calculated total latency for the Muskie timeline to the basic output
   - Consider adding the calculated latency-to-first-byte
 - See what else we should add to the output (e.g., response status code!)
 - Try with other types of requests:

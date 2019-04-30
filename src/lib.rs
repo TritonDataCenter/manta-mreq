@@ -106,9 +106,18 @@ pub fn mri_dump(mri : &MantaRequestInfo)
 
     let timeline = mri_timeline(mri);
     println!("");
-    println!("{:30} {:>6} {:>6} {}", "WALL TIMESTAMP", "TIMEms", "ELAPms",
-        "EVENT");
-    for event in timeline.tl_events {
+    mri_dump_timeline(&timeline, true, chrono::Duration::milliseconds(0));
+}
+
+fn mri_dump_timeline(timeline : &Timeline, dumpHeader : bool,
+    base : chrono::Duration)
+{
+    if dumpHeader {
+        println!("{:30} {:>6} {:>6} {:>6} {}", "WALL TIMESTAMP",
+            "TIMEms", "RELms", "ELAPms", "EVENT");
+    }
+
+    for event in &timeline.tl_events {
         /*
          * The formatter for the timestamps does not appear to implement width
          * specifiers, so in order to do that properly, we must first format it
@@ -116,9 +125,15 @@ pub fn mri_dump(mri : &MantaRequestInfo)
          * specifier.
          */
         let wall_start = format!("{}", event.wall_start());
-        println!("{:30} {:6} {:6} {}", wall_start,
+        println!("{:30} {:6} {:6} {:6} {}", wall_start,
+            (base + event.relative_start()).num_milliseconds(),
             event.relative_start().num_milliseconds(),
             event.duration().num_milliseconds(), event.label());
+
+        let maybe_subtimeline = event.subtimeline();
+        if let Some(subtimeline) = maybe_subtimeline {
+            mri_dump_timeline(subtimeline, false, event.relative_start());
+        }
     }
 }
 
@@ -136,8 +151,8 @@ fn mri_timeline(mri : &MantaRequestInfo)
      */
     let walltime_end : chrono::DateTime<chrono::Utc> =
         muskie_entry.mle_time.parse().unwrap();
-    let mut timeline = Timeline::new_ending(walltime_end);
-    timeline.prepend("muskie created audit log entry",
+    let mut muskie_timeline = Timeline::new_ending(walltime_end);
+    muskie_timeline.prepend("muskie created audit log entry",
         &chrono::Duration::microseconds(0));
 
     let handler_durations = muskie_request.mle_req_timers.map();
@@ -146,12 +161,13 @@ fn mri_timeline(mri : &MantaRequestInfo)
     for handler_name in handler_names {
         let duration_us = handler_durations[handler_name].as_i64().expect(
             "timer was not a 64-bit integer");
-        timeline.prepend(&format!("muskie handler: {}", handler_name),
+        muskie_timeline.prepend(&format!("muskie handler: {}", handler_name),
             &chrono::Duration::microseconds(duration_us));
     }
 
-    timeline.prepend("muskie began processing request",
+    muskie_timeline.prepend("muskie began processing request",
         &chrono::Duration::microseconds(0));
+    muskie_timeline.finalize();
 
     //
     // TODO This could be more flexible.
@@ -188,29 +204,20 @@ fn mri_timeline(mri : &MantaRequestInfo)
         timestamp_parsed
     };
 
+    let mut timeline = Timeline::new_ending(walltime_end);
+
     match client_timestamp {
         Ok(when) => {
-            // TODO The way we model this kind of sucks.  We want the timeline
-            // to include this entry, but it sucks that the relative timestamps
-            // are now counted from this point, instead of when Muskie started
-            // processing the request.  For one, it makes it look like the
-            // request took a long time to get to Muskie, when it could just be
-            // the lack of precision in the client-generated header.
-            //
-            // Idea: maybe timelines can have other timelines as "events" inside
-            // them?  Relative timestamps are always shown relative to the most
-            // specific timeline?  Then we'd have a separate timeline for Muskie
-            // request handling (which would also make it easier to calculate
-            // total latency of all request handlers).
             timeline.add("client generated Date header", &when,
-                &chrono::Duration::microseconds(0));
+                &chrono::Duration::microseconds(0), None);
         },
         Err(e) => {
             // XXX want some other way to track warnings
             eprintln!("client timestamp (\"{}\"): error: {}", client_time, e);
         }
     }
-        
+
+    timeline.add_timeline("muskie processing", Box::new(muskie_timeline));
     timeline.finalize();
     return timeline;
 }
@@ -234,18 +241,25 @@ impl Timeline {
     }
 
     pub fn add(&mut self, label : &str, start : &chrono::DateTime<chrono::Utc>,
-        duration : &chrono::Duration)
+        duration : &chrono::Duration, subtimeline : Option<Box<Timeline>>)
     {
         // TODO doing it like this makes this O(N^2) to insert N events
         self.tl_events.insert(0, TimelineEvent {
             te_wall_start : start.clone(),
             te_relative_start : None,
             te_duration : duration.clone(),
-            te_label: String::from(label).clone()
+            te_label: String::from(label).clone(),
+            te_timeline: subtimeline
         });
 
         self.tl_events.sort_by(|a, b|
             (&a.te_wall_start).partial_cmp(&b.te_wall_start).unwrap());
+    }
+
+    pub fn add_timeline(&mut self, label : &str, timeline : Box<Timeline>)
+    {
+        self.add(label, &timeline.tl_start.unwrap(), &timeline.total_elapsed(),
+            Some(timeline));
     }
 
     pub fn prepend(&mut self, label : &str, duration : &chrono::Duration)
@@ -256,7 +270,7 @@ impl Timeline {
             self.tl_events[0].wall_start()
         };
 
-        self.add(label, &(end_wall_time - *duration), duration);
+        self.add(label, &(end_wall_time - *duration), duration, None);
     }
 
     pub fn finalize(&mut self)
@@ -281,6 +295,11 @@ impl Timeline {
     {
         return self.tl_end - self.tl_start.expect("timeline not finalized");
     }
+
+    pub fn print(&self)
+    {
+
+    }
 }
 
 //
@@ -291,7 +310,8 @@ struct TimelineEvent {
     te_wall_start : chrono::DateTime<chrono::Utc>,
     te_relative_start : Option<chrono::Duration>,
     te_duration : chrono::Duration,
-    te_label : String
+    te_label : String,
+    te_timeline : Option<Box<Timeline>>
 }
 
 impl TimelineEvent {
@@ -305,7 +325,7 @@ impl TimelineEvent {
         -> chrono::Duration
     {
         // XXX
-        return self.te_relative_start.unwrap().clone();
+        return self.te_relative_start.expect("timeline not finalized").clone();
     }
 
     pub fn wall_end(&self)
@@ -324,5 +344,14 @@ impl TimelineEvent {
         -> String
     {
         return self.te_label.clone();
+    }
+
+    pub fn subtimeline(&self)
+        -> Option<&Box<Timeline>>
+    {
+        match &self.te_timeline {
+            Some(t) => Some(&t),
+            None => None
+        }
     }
 }
