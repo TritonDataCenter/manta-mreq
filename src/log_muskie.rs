@@ -2,8 +2,6 @@
  * src/log_muskie.rs: Muskie log format parser
  *
  * TODO review log entry details (e.g., error, caller.groups, caller.user, etc.)
- * TODO Validate the semantics of the log entry and switch to a type that
- * doesn't have so many Options
  */
 
 use std::collections::BTreeMap;
@@ -174,4 +172,111 @@ pub struct MuskieLogEntryResponse {
     pub mle_response_status_code : u8, // TODO parse this as enum
     #[serde(rename = "headers")]
     pub mle_response_headers : BTreeMap<String, MuskieLogEntryHeaderValue>
+}
+
+
+///
+/// A MuskieAuditInfo object collects the valid parts of a MuskieLogEntry that
+/// represent a completed request.
+///
+pub struct MuskieAuditInfo {
+    // Bunyan fields
+    pub mai_hostname : String,
+    pub mai_pid : String,
+    pub mai_time : chrono::DateTime<chrono::Utc>,
+
+    // Muskie-specific fields
+    pub mai_operation : String,
+    pub mai_route : String,
+    pub mai_remote_port : u16,                  // TODO can this be missing?
+    pub mai_remote_address : String,            // TODO can this be missing?
+
+    pub mai_remote_address_logical : String,    // TODO can this be missing?
+    pub mai_billable_operation : String,        // TODO can this be missing?
+    pub mai_timers : MuskieLogEntryTimers,
+
+    pub mai_req_header_length : u16,
+    pub mai_req_method : String,                // TODO should be enum?
+    pub mai_req_url : String,                   // TODO should be enum?
+    pub mai_req_http_version : String,
+    pub mai_req_owner_uuid : String,
+    pub mai_req_headers : BTreeMap<String, MuskieLogEntryHeaderValue>,
+    pub mai_req_caller_uuid : String,           // TODO what does this look like
+    pub mai_req_caller_login : String,          // when it's missing?
+
+    pub mai_response_header_length : u16,
+    pub mai_response_status_code : u8,               // TODO parse as enum
+    pub mai_response_headers : BTreeMap<String, MuskieLogEntryHeaderValue>
+}
+
+///
+/// Given a Muskie log entry, validates the entry.  If the entry represents a
+/// well-formed audit log entry, then returns a MuskieAuditInfo object
+/// describing the request and response.  Otherwises, returns an error.
+///
+pub fn mri_audit_entry(mle : &MuskieLogEntry)
+    -> Result<MuskieAuditInfo, String>
+{
+    if mle.mle_bunyan_version != 0 {
+        return Err(format!("expected bunyan version 0, but found {}",
+            mle.mle_bunyan_version));
+    }
+
+    if mle.mle_audit.is_none() || !mle.mle_audit.unwrap() {
+        return Err(format!("expected audit log entry (having \"audit\": true)"));
+    }
+
+    let wall_time : chrono::DateTime<chrono::Utc> = match mle.mle_time.parse() {
+        Ok(t) => t,
+        Err(e) => return Err(format!("{}", e))
+    };
+    let operation : &String = mle.mle_operation.as_ref().ok_or(
+        String::from("expected \"operation\" field)"))?;
+    let route : &String = mle.mle_route.as_ref().ok_or(
+        String::from("expected \"route\" field)"))?;
+    let remote_port : &u16 = mle.mle_remote_port.as_ref().ok_or(
+        String::from("expected \"remotePort\" field)"))?;
+    let remote_address : &String = mle.mle_remote_address.as_ref().ok_or(
+        String::from("expected \"remoteAddress\" field)"))?;
+    let remote_address_logical : &String =
+        mle.mle_remote_address_logical.as_ref().ok_or(
+        String::from("expected \"logicalRemoteAddress\" field)"))?;
+    let billable_operation : &String =
+        mle.mle_billable_operation.as_ref().ok_or(
+        String::from("expected \"billable_operation\" field)"))?;
+    let request : &MuskieLogEntryRequest =
+        mle.mle_request.as_ref().ok_or(
+        String::from("expected \"req\" field)"))?;
+    let response : &MuskieLogEntryResponse =
+        mle.mle_response.as_ref().ok_or(
+        String::from("expected \"res\" field)"))?;
+    let caller : &MuskieLogEntryCaller =
+        request.mle_req_caller.as_ref().ok_or(
+        String::from("expected \"req.caller\" field)"))?;
+
+    return Ok(MuskieAuditInfo {
+        mai_hostname : mle.mle_hostname.clone(),
+        mai_pid : mle.mle_pid.to_string(),
+        mai_time : wall_time,
+        mai_operation : operation.clone(),
+        mai_route : route.clone(),
+        mai_remote_port : *remote_port,
+        mai_remote_address : remote_address.clone(),
+        mai_remote_address_logical : remote_address_logical.clone(),
+        mai_billable_operation : billable_operation.clone(),
+        mai_timers : request.mle_req_timers.clone(),
+        mai_req_header_length : *mle.mle_request_header_length.as_ref().ok_or(
+            String::from("expected \"reqHeaderLength\" field)"))?,
+        mai_req_method : request.mle_req_method.clone(),
+        mai_req_url : request.mle_req_url.clone(),
+        mai_req_http_version : request.mle_req_http_version.clone(),
+        mai_req_owner_uuid : request.mle_req_owner.clone(),
+        mai_req_headers : request.mle_req_headers.clone(),
+        mai_response_status_code : response.mle_response_status_code,
+        mai_response_header_length : *mle.mle_response_header_length.as_ref().
+            ok_or(String::from("expected \"reqHeaderLength\" field)"))?,
+        mai_response_headers : response.mle_response_headers.clone(),
+        mai_req_caller_uuid : caller.mle_req_caller_uuid.clone(),
+        mai_req_caller_login : caller.mle_req_caller_login.clone(),
+    });
 }

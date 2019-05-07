@@ -15,7 +15,8 @@ mod timeline;
 
 pub use log_common::mri_read_file;
 pub use log_muskie::mri_parse_muskie_file;
-pub use log_muskie::MuskieLogEntry;
+pub use log_muskie::mri_audit_entry;
+pub use log_muskie::MuskieAuditInfo;
 
 /*
  * Represents validated end-user input.
@@ -28,9 +29,8 @@ pub struct MantaLogParserInput {
  * MantaRequestInfo records all information we've collected about the Manta
  * request.
  */
-#[derive(Debug)]
 pub struct MantaRequestInfo {
-    mri_muskie : Option<MuskieLogEntry>
+    mri_muskie : Option<MuskieAuditInfo>
 }
 
 pub fn mri_parse_files(mli : &MantaLogParserInput)
@@ -38,66 +38,57 @@ pub fn mri_parse_files(mli : &MantaLogParserInput)
 {
     let muskie_log = mri_parse_muskie_file(&mli.mli_muskie_filename)?;
     let muskie_entry = muskie_log.muskie_entries[0].clone();
+    let audit_entry = mri_audit_entry(&muskie_entry)?;
 
     Ok(MantaRequestInfo {
-        mri_muskie: Some(muskie_entry)
+        mri_muskie: Some(audit_entry)
     })
 }
 
 pub fn mri_dump(mri : &MantaRequestInfo)
 {
     if let None = mri.mri_muskie {
-        if let None = mri.mri_muskie.as_ref().unwrap().mle_request {
-            println!("missing Muskie log entry or required fields");
-        }
+        println!("missing Muskie log entry or required fields");
+        return;
     }
 
-    let muskie_entry = mri.mri_muskie.as_ref().unwrap();
-    let muskie_request = muskie_entry.mle_request.as_ref().unwrap();
-    let muskie_response = muskie_entry.mle_response.as_ref().unwrap();
-    let remote_ip = muskie_entry.mle_remote_address_logical.clone().unwrap_or(
-        String::from("unknown remote IP address"));
-    let dns_name = muskie_request.mle_req_headers["host"].string();
+    let muskie_info = mri.mri_muskie.as_ref().unwrap();
+    let remote_ip = &muskie_info.mai_remote_address_logical;
+    let dns_name = muskie_info.mai_req_headers["host"].string(); // XXX
 
     println!("MANTA CLIENT:");
     println!("  remote IP:      {}", remote_ip);
-
-    if let Some(ref caller) = muskie_request.mle_req_caller {
-        println!("  account:        {} ({})", caller.mle_req_caller_login,
-            caller.mle_req_caller_uuid);
-    } else {
-        println!("  account: none provided (anonymous request)");
-    }
-
+    println!("  account:        {} ({})", muskie_info.mai_req_caller_login,
+        muskie_info.mai_req_caller_uuid);
     println!("  Manta DNS name: {}", dns_name);
     println!("  (inferred from client \"Host\" header)");
     println!("  agent: {}",
-        muskie_request.mle_req_headers["user-agent"].string());
+        muskie_info.mai_req_headers["user-agent"].string());
     println!("");
 
     // TODO Any information about the load balancer
     // TODO Any information about mako instances
 
-    println!("WEBAPI SERVER:  ZONE {} PID {}", muskie_entry.mle_hostname,
-        muskie_entry.mle_pid);
+    println!("WEBAPI SERVER:  ZONE {} PID {}", muskie_info.mai_hostname,
+        muskie_info.mai_pid);
     // TODO add warning for missing x-server-name or x-server-name not matching
     println!("");
 
     println!("REQUEST DETAILS:");
     println!("  request id:      {}",
-        muskie_response.mle_response_headers["x-request-id"].string());
-    println!("  method:          {}", muskie_request.mle_req_method);
-    println!("  operation:       {}",
-        muskie_entry.mle_operation.clone().unwrap_or(String::from("unknown")));
-    println!("  billable op:     {}",
-        muskie_entry.mle_billable_operation.clone().unwrap_or(
-        String::from("unknown")));
-    println!("  url:             {}", muskie_request.mle_req_url);
-    println!("  owner account:   {}", muskie_request.mle_req_owner);
-    println!("  route:           {}",
-        muskie_entry.mle_route.clone().unwrap_or(String::from("unknown")));
+        muskie_info.mai_response_headers["x-request-id"].string());
+    println!("  method:          {}", muskie_info.mai_req_method);
+    println!("  operation:       {}", muskie_info.mai_operation);
+    println!("  billable op:     {}", muskie_info.mai_billable_operation);
+    println!("  url:             {}", muskie_info.mai_req_url);
+    println!("  owner account:   {}", muskie_info.mai_req_owner_uuid);
+    println!("  route:           {}", muskie_info.mai_route);
+    println!("");
+
+    println!("RESPONSE DETAILS:");
+    println!("  status code:     {}", muskie_info.mai_response_status_code);
     println!("  x-response-time: {} ms (\"x-response-time\" header)",
-        muskie_response.mle_response_headers["x-response-time"].as_i64());
+        muskie_info.mai_response_headers["x-response-time"].as_i64());
     println!("      (This is the latency-to-first-byte reported by the \
         server.)");
 
@@ -141,8 +132,7 @@ fn mri_dump_timeline(timeline : &timeline::Timeline, dump_header : bool,
 fn mri_timeline(mri : &MantaRequestInfo)
     -> timeline::Timeline
 {
-    let muskie_entry = mri.mri_muskie.as_ref().unwrap();
-    let muskie_request = muskie_entry.mle_request.as_ref().unwrap();
+    let muskie_info = mri.mri_muskie.as_ref().unwrap();
 
     /*
      * The Muskie audit log entry is the only anchor point we have for this
@@ -150,14 +140,13 @@ fn mri_timeline(mri : &MantaRequestInfo)
      * mostly have durations associated with them, so we have to work backwards
      * from the completion time.
      */
-    let walltime_end : chrono::DateTime<chrono::Utc> =
-        muskie_entry.mle_time.parse().unwrap();
+    let walltime_end = muskie_info.mai_time;
     let mut muskie_timeline = timeline::TimelineBuilder::new_ending(
         walltime_end);
     muskie_timeline.prepend("muskie created audit log entry",
         &chrono::Duration::microseconds(0));
 
-    let handler_durations = muskie_request.mle_req_timers.map();
+    let handler_durations = muskie_info.mai_timers.map();
     let mut handler_names : Vec<&String> = handler_durations.keys().collect();
     handler_names.reverse();
     for handler_name in handler_names {
@@ -186,7 +175,7 @@ fn mri_timeline(mri : &MantaRequestInfo)
     // implementing this ourselves with our own time zone database, we assume
     // the common case of GMT and handle that directly.
     //
-    let client_time = muskie_request.mle_req_headers["date"].string();
+    let client_time = muskie_info.mai_req_headers["date"].string();
     let client_timestamp = {
         let timestamp_parsed : Result<chrono::DateTime<chrono::Utc>, _>;
 
