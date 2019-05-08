@@ -30,7 +30,9 @@ pub struct MantaLogParserInput {
  * request.
  */
 pub struct MantaRequestInfo {
-    mri_muskie : Option<MuskieAuditInfo>
+    mri_muskie : MuskieAuditInfo,
+    mri_timeline_overall : timeline::Timeline,
+    mri_timeline_muskie : timeline::Timeline
 }
 
 pub fn mri_parse_files(mli : &MantaLogParserInput)
@@ -39,22 +41,21 @@ pub fn mri_parse_files(mli : &MantaLogParserInput)
     let muskie_log = mri_parse_muskie_file(&mli.mli_muskie_filename)?;
     let muskie_entry = muskie_log.muskie_entries[0].clone();
     let audit_entry = mri_audit_entry(&muskie_entry)?;
+    let (overall_timeline, muskie_timeline) = mri_timelines(&audit_entry)?;
 
     Ok(MantaRequestInfo {
-        mri_muskie: Some(audit_entry)
+        mri_muskie: audit_entry,
+        mri_timeline_overall: overall_timeline,
+        mri_timeline_muskie: muskie_timeline
     })
 }
 
 pub fn mri_dump(mri : &MantaRequestInfo)
 {
-    if let None = mri.mri_muskie {
-        println!("missing Muskie log entry or required fields");
-        return;
-    }
-
-    let muskie_info = mri.mri_muskie.as_ref().unwrap();
+    let muskie_info = &mri.mri_muskie;
     let remote_ip = &muskie_info.mai_remote_address_logical;
     let dns_name = muskie_info.mai_req_headers["host"].string(); // XXX
+    let min_duration_option = Some(chrono::Duration::milliseconds(1));
 
     println!("MANTA CLIENT:");
     println!("  remote IP:      {}", remote_ip);
@@ -87,6 +88,8 @@ pub fn mri_dump(mri : &MantaRequestInfo)
 
     println!("RESPONSE DETAILS:");
     println!("  status code:     {}", muskie_info.mai_response_status_code);
+    println!("  muskie latency:  {} ms (calculated from timers)",
+        mri.mri_timeline_muskie.total_elapsed().num_milliseconds());
     println!("  x-response-time: {} ms (\"x-response-time\" header)",
         muskie_info.mai_response_headers["x-response-time"].as_i64());
     println!("      (This is the latency-to-first-byte reported by the \
@@ -96,18 +99,30 @@ pub fn mri_dump(mri : &MantaRequestInfo)
     // TODO sharks contacted?
     // TODO data transfer (including headers)
 
-    let timeline = mri_timeline(mri);
     println!("");
-    mri_dump_timeline(&timeline, true, chrono::Duration::milliseconds(0));
+    let nskipped = mri_dump_timeline(&mri.mri_timeline_overall, true,
+        chrono::Duration::milliseconds(0), min_duration_option);
+    if nskipped > 0 {
+        println!("\nNOTE: {} timeline event{} with duration less than {} ms {} \
+            not shown above.", nskipped,
+            if nskipped == 1 { "" } else { "s" },
+            min_duration_option.expect(
+                "must be min_duration_option if events were filtered").
+                num_milliseconds(),
+            if nskipped == 1 { "was" } else { "were" });
+    }
 }
 
 fn mri_dump_timeline(timeline : &timeline::Timeline, dump_header : bool,
-    base : chrono::Duration)
+    base : chrono::Duration, min_duration_option : Option<chrono::Duration>)
+    -> i16
 {
     if dump_header {
         println!("{:30} {:>6} {:>6} {:>6} {}", "WALL TIMESTAMP",
             "TIMEms", "RELms", "ELAPms", "EVENT");
     }
+
+    let mut nskipped = 0;
 
     for event in timeline.events() {
         /*
@@ -116,6 +131,18 @@ fn mri_dump_timeline(timeline : &timeline::Timeline, dump_header : bool,
          * as a string and then separately format that string with a width
          * specifier.
          */
+        if let Some(min_duration) = min_duration_option {
+            //
+            // TODO we're using 0 as a special value for important events that
+            // have no elapsed time, but this should probably be an option
+            // instead.
+            //
+            if !event.duration().is_zero() && event.duration() < min_duration {
+                nskipped += 1;
+                continue;
+            }
+        }
+
         let wall_start = format!("{}", event.wall_start());
         print!("{:30} {:6} {:6} ", wall_start, 
             (base + event.relative_start()).num_milliseconds(),
@@ -124,7 +151,8 @@ fn mri_dump_timeline(timeline : &timeline::Timeline, dump_header : bool,
         let maybe_subtimeline = event.subtimeline();
         if let Some(subtimeline) = maybe_subtimeline {
             println!("{:>6} {} {{", "-", event.label());
-            mri_dump_timeline(subtimeline, false, event.relative_start());
+            nskipped += mri_dump_timeline(subtimeline, false,
+                event.relative_start(), min_duration_option);
 
             /* See the above comment regarding "wall_start". */
             let wall_end = format!("{}", event.wall_end());
@@ -137,13 +165,13 @@ fn mri_dump_timeline(timeline : &timeline::Timeline, dump_header : bool,
                 event.label());
         }
     }
+
+    return nskipped;
 }
 
-fn mri_timeline(mri : &MantaRequestInfo)
-    -> timeline::Timeline
+fn mri_timelines(muskie_info : &MuskieAuditInfo)
+    -> Result<(timeline::Timeline, timeline::Timeline), String>
 {
-    let muskie_info = mri.mri_muskie.as_ref().unwrap();
-
     /*
      * The Muskie audit log entry is the only anchor point we have for this
      * timeline.  Other events (namely, execution of Muskie request handlers)
@@ -168,7 +196,7 @@ fn mri_timeline(mri : &MantaRequestInfo)
 
     muskie_timeline.prepend("muskie began processing request",
         &chrono::Duration::microseconds(0));
-    let muskie_timeline = muskie_timeline.finish(); // TODO style
+    let muskie_timeline = Box::new(muskie_timeline.finish());
 
     //
     // TODO This could be more flexible.
@@ -218,6 +246,6 @@ fn mri_timeline(mri : &MantaRequestInfo)
         }
     }
 
-    timeline.add_timeline("muskie processing", Box::new(muskie_timeline));
-    return timeline.finish();
+    timeline.add_timeline("muskie processing", muskie_timeline.clone());
+    return Ok((timeline.finish(), *muskie_timeline));
 }

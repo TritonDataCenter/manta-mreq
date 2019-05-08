@@ -24,7 +24,7 @@
 /// Create these using a `TimelineBuilder`.  See module-level documentation for
 /// details.
 ///
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub struct Timeline {
     ///
     /// The list of events in this timeline, in wall-clock order.
@@ -71,7 +71,7 @@ impl Timeline
 ///
 /// Represents one event in a timeline.
 ///
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub struct TimelineEvent {
     te_wall_start : chrono::DateTime<chrono::Utc>,
     te_relative_start : chrono::Duration,
