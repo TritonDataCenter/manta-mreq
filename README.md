@@ -109,4 +109,6 @@ Next steps:
   - object fetch and create
     - will want to separate out latency-to-first-byte?
 - Consider adding the calculated latency-to-first-byte
+- Add haproxy log entry
+- Add nginx log entry
 - Lots of XXXs and TODOs
