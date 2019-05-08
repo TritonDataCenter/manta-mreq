@@ -117,14 +117,24 @@ fn mri_dump_timeline(timeline : &timeline::Timeline, dump_header : bool,
          * specifier.
          */
         let wall_start = format!("{}", event.wall_start());
-        println!("{:30} {:6} {:6} {:6} {}", wall_start,
+        print!("{:30} {:6} {:6} ", wall_start, 
             (base + event.relative_start()).num_milliseconds(),
-            event.relative_start().num_milliseconds(),
-            event.duration().num_milliseconds(), event.label());
+            event.relative_start().num_milliseconds());
 
         let maybe_subtimeline = event.subtimeline();
         if let Some(subtimeline) = maybe_subtimeline {
+            println!("{:>6} {} {{", "-", event.label());
             mri_dump_timeline(subtimeline, false, event.relative_start());
+
+            /* See the above comment regarding "wall_start". */
+            let wall_end = format!("{}", event.wall_end());
+            println!("{:30} {:6} {:>6} {:6} }} (subtimeline ended)",
+                wall_end, (base + event.relative_start() +
+                event.duration()).num_milliseconds(), "-",
+                event.duration().num_milliseconds());
+        } else {
+            println!("{:6} {}", event.duration().num_milliseconds(),
+                event.label());
         }
     }
 }

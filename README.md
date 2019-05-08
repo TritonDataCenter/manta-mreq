@@ -58,8 +58,6 @@ Currently, this can dump basic information about a Muskie request, but the
 output is still very much evolving.
 
 Next steps:
-- Improve the display of subtimelines so that it's less confusing what's going
-  on.
 - Add calculated total latency for the Muskie timeline to the basic output
   - Consider adding the calculated latency-to-first-byte
 - See what else we should add to the output (e.g., response status code!)
