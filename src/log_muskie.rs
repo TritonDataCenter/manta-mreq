@@ -113,8 +113,7 @@ pub enum MuskieLogEntryHeaderValue {
 
 impl MuskieLogEntryHeaderValue {
     // XXX We should validate and handle this better.
-    // XXX should this be as_string()?
-    pub fn string(&self) -> &String {
+    pub fn as_string(&self) -> &String {
         match self {
             MuskieLogEntryHeaderValue::Str(s) => s,
             _ => panic!("header value is not a string")
@@ -122,7 +121,6 @@ impl MuskieLogEntryHeaderValue {
     }
 
     // XXX We should validate and handle this better.
-    // XXX is our use of the as_i64() convention correct?
     pub fn as_i64(&self) -> i64 {
         match self {
             MuskieLogEntryHeaderValue::Int(i64val) => *i64val,
@@ -132,6 +130,11 @@ impl MuskieLogEntryHeaderValue {
             // headers that were originally numeric as numbers.  We have to deal
             // with this.  We could do it earlier when parsing, but it's simpler
             // for now to parse here if needed.
+            // This technically violates Rust's naming convention, where "as_"
+            // is supposed to be a "free" operation.  However, this best
+            // reflects the caller's view of this operation (namely, that we're
+            // just returning a particular representation of the header).  This
+            // would be free if we'd parsed it earlier.
             MuskieLogEntryHeaderValue::Str(strval) => {
                 match strval.parse() {
                     Ok(x) => x,

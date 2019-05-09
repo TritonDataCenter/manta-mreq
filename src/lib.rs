@@ -54,7 +54,7 @@ pub fn mri_dump(mri : &MantaRequestInfo)
 {
     let muskie_info = &mri.mri_muskie;
     let remote_ip = &muskie_info.mai_remote_address_logical;
-    let dns_name = muskie_info.mai_req_headers["host"].string(); // XXX
+    let dns_name = muskie_info.mai_req_headers["host"].as_string(); // XXX
     let min_duration_option = Some(chrono::Duration::milliseconds(1));
 
     // TODO add: whether client requested keep-alive and whether it got it
@@ -63,7 +63,7 @@ pub fn mri_dump(mri : &MantaRequestInfo)
     println!("  Manta DNS name: {}", dns_name);
     println!("  (inferred from client \"Host\" header)");
     println!("  agent: {}",
-        muskie_info.mai_req_headers["user-agent"].string());
+        muskie_info.mai_req_headers["user-agent"].as_string());
     println!("");
 
     // TODO Any information about the load balancer
@@ -78,7 +78,7 @@ pub fn mri_dump(mri : &MantaRequestInfo)
     // TODO warn if server request id differs from client's?
     println!("REQUEST DETAILS:");
     println!("  request id:      {}",
-        muskie_info.mai_response_headers["x-request-id"].string());
+        muskie_info.mai_response_headers["x-request-id"].as_string());
     println!("  method:          {}", muskie_info.mai_req_method);
     println!("  operation:       {}", muskie_info.mai_operation);
     println!("  billable op:     {}", muskie_info.mai_billable_operation);
@@ -252,7 +252,7 @@ fn mri_timelines(muskie_info : &MuskieAuditInfo)
     // implementing this ourselves with our own time zone database, we assume
     // the common case of GMT and handle that directly.
     //
-    let client_time = muskie_info.mai_req_headers["date"].string();
+    let client_time = muskie_info.mai_req_headers["date"].as_string();
     let client_timestamp = {
         let timestamp_parsed : Result<chrono::DateTime<chrono::Utc>, _>;
 
