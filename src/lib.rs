@@ -77,17 +77,19 @@ pub fn mri_dump(mri : &MantaRequestInfo)
     // TODO handle cases of missing headers
     // TODO warn if server request id differs from client's?
     println!("REQUEST DETAILS:");
-    println!("  request id:      {}",
+    println!("  request id:       {}",
         muskie_info.mai_response_headers["x-request-id"].as_string());
-    println!("  method:          {}", muskie_info.mai_req_method);
-    println!("  operation:       {}", muskie_info.mai_operation);
-    println!("  billable op:     {}", muskie_info.mai_billable_operation);
-    println!("  url:             {}", muskie_info.mai_req_url);
-    println!("  caller account:  {} ({})", muskie_info.mai_req_caller_login,
+    println!("  method:           {}", muskie_info.mai_req_method);
+    println!("  operation:        {}", muskie_info.mai_operation);
+    println!("  billable op:      {}", muskie_info.mai_billable_operation);
+    println!("  url:              {}", muskie_info.mai_req_url);
+    println!("  caller account:   {} ({})", muskie_info.mai_req_caller_login,
         muskie_info.mai_req_caller_uuid);
-    // XXX report if the user is an operator
-    println!("  owner account:   {}", muskie_info.mai_req_owner_uuid);
-    println!("  route:           {}", muskie_info.mai_route);
+    println!("  caller privilege: {}",
+        if muskie_info.mai_req_caller_operator { "OPERATOR" }
+        else { "unprivileged account" });
+    println!("  owner account:    {}", muskie_info.mai_req_owner_uuid);
+    println!("  route:            {}", muskie_info.mai_route);
     println!("");
 
     println!("RESPONSE DETAILS:");

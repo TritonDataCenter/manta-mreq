@@ -96,8 +96,9 @@ pub struct MuskieLogEntryRequest {
 
 #[derive(Debug, Clone, Deserialize, PartialEq)]
 pub struct MuskieLogEntryCaller {
-    #[serde(rename = "login")] pub mle_req_caller_login : String,
-    #[serde(rename = "uuid")]  pub mle_req_caller_uuid : String
+    #[serde(rename = "login")]  pub mle_req_caller_login : String,
+    #[serde(rename = "uuid")]   pub mle_req_caller_uuid : String,
+    #[serde(rename = "groups")] pub mle_req_caller_groups : Vec<String>
 }
 
 /*
@@ -138,7 +139,8 @@ impl MuskieLogEntryHeaderValue {
             MuskieLogEntryHeaderValue::Str(strval) => {
                 match strval.parse() {
                     Ok(x) => x,
-                    Err(e) => panic!("header value is not a number")
+                    Err(e) => panic!("header value is not a number \
+                        (parse error: {})", e)
                 }
             }
         }
@@ -228,6 +230,7 @@ pub struct MuskieAuditInfo {
     pub mai_req_http_version : String,
     pub mai_req_owner_uuid : String,
     pub mai_req_headers : BTreeMap<String, MuskieLogEntryHeaderValue>,
+    pub mai_req_caller_operator : bool,
     pub mai_req_caller_uuid : String,           // TODO what does this look like
     pub mai_req_caller_login : String,          // when it's missing?
 
@@ -310,8 +313,10 @@ pub fn mri_audit_entry(mle : &MuskieLogEntry)
         mai_response_header_length : *mle.mle_response_header_length.as_ref().
             ok_or(String::from("expected \"reqHeaderLength\" field)"))?,
         mai_response_headers : response.mle_response_headers.clone(),
+        mai_req_caller_operator : caller.mle_req_caller_groups.contains(
+            &String::from("operators")),
         mai_req_caller_uuid : caller.mle_req_caller_uuid.clone(),
         mai_req_caller_login : caller.mle_req_caller_login.clone(),
-        mai_error : error
+        mai_error : error,
     });
 }
