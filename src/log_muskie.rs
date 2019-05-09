@@ -81,6 +81,9 @@ pub struct MuskieLogEntry {
     #[serde(rename = "objectId")]       pub mle_objectid : Option<String>,
     #[serde(rename = "entryShard")]     pub mle_shard_entry : Option<String>,
     #[serde(rename = "parentShard")]    pub mle_shard_parent : Option<String>,
+
+    #[serde(rename = "bytesTransferred")]
+    pub mle_bytes_transferred: Option<MuskieLogEntryMaybeNumeric>,
 }
 
 #[derive(Debug, Clone, Deserialize, PartialEq)]
@@ -209,6 +212,44 @@ pub struct MuskieErrorObject {
     #[serde(rename = "message")]    pub mle_error_message : String
 }
 
+/*
+ * Similar to headers, some other values in the log entry are expected to be
+ * numbers, but may have been recorded as strings.  For example,
+ * "bytesTransferred" appears to be a number on PUTs and a string on GETs.
+ */
+#[derive(Debug, Clone, Deserialize, PartialEq)]
+#[serde(untagged)]
+pub enum MuskieLogEntryMaybeNumeric {
+    Str(String),
+    Int(i64)
+}
+impl MuskieLogEntryMaybeNumeric {
+    // XXX We should validate and handle this better.
+    pub fn as_i64(&self) -> i64 {
+        match self {
+            MuskieLogEntryMaybeNumeric::Int(i64val) => *i64val,
+            // XXX This is somewhat dubious, but the problem is that Muskie logs
+            // all request headers as a string (probably since they initially
+            // came in as strings from the client) while it logs response
+            // headers that were originally numeric as numbers.  We have to deal
+            // with this.  We could do it earlier when parsing, but it's simpler
+            // for now to parse here if needed.
+            // This technically violates Rust's naming convention, where "as_"
+            // is supposed to be a "free" operation.  However, this best
+            // reflects the caller's view of this operation (namely, that we're
+            // just returning a particular representation of the header).  This
+            // would be free if we'd parsed it earlier.
+            MuskieLogEntryMaybeNumeric::Str(strval) => {
+                match strval.parse() {
+                    Ok(x) => x,
+                    Err(e) => panic!("numeric value is not a number \
+                        (parse error: {})", e)
+                }
+            }
+        }
+    }
+}
+
 
 ///
 /// A MuskieAuditInfo object collects the valid parts of a MuskieLogEntry that
@@ -248,6 +289,7 @@ pub struct MuskieAuditInfo {
     pub mai_objectid : Option<String>,
     pub mai_shard_entry : Option<String>,
     pub mai_shard_parent : Option<String>,
+    pub mai_bytes_transferred : Option<i64>,
 }
 
 ///
@@ -329,6 +371,8 @@ pub fn mri_audit_entry(mle : &MuskieLogEntry)
         mai_error : error,
         mai_objectid : mle.mle_objectid.clone(),
         mai_shard_entry : mle.mle_shard_entry.clone(),
-        mai_shard_parent : mle.mle_shard_parent.clone()
+        mai_shard_parent : mle.mle_shard_parent.clone(),
+        mai_bytes_transferred : mle.mle_bytes_transferred.as_ref().map(
+            |x| x.as_i64()),
     });
 }

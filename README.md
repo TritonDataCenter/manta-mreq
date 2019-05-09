@@ -101,8 +101,6 @@ output is still very much evolving.
 
 Next steps:
 - Add information for object-fetch requests:
-  - objectid
-  - shards contacted
   - sharks contacted
     - both called out and in the timeline view
   - With this, we should be able to show an interesting timeline when we have to

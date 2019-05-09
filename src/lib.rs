@@ -102,8 +102,10 @@ pub fn mri_dump(mri : &MantaRequestInfo)
         server.)");
     println!("");
 
+    // TODO should probably include "headobject"?
     if muskie_info.mai_route == "putobject" ||
-        muskie_info.mai_route == "getobject" {
+        muskie_info.mai_route == "getobject" ||
+        muskie_info.mai_route == "deletestorage" {
         mri_dump_object_metadata(&muskie_info);
     }
 
@@ -122,23 +124,28 @@ pub fn mri_dump(mri : &MantaRequestInfo)
     // RFC 2616 4.3, though -- some methods don't allow bodies.  See 4.4 for how
     // to know the body length.
     println!("DATA TRANSFER:");
-    println!("  request headers:         {} bytes",
+    println!("  request headers:           {} bytes",
         muskie_info.mai_req_header_length);
-    println!("  request content length:  {}",
+    println!("  request content length:    {}",
         match muskie_info.mai_req_headers.get("content-length") {
             // TODO handle cases of wrong header value type (e.g., string here)
             Some(header_value) => format!("{} bytes", header_value.as_i64()),
             None => String::from("unspecified\n    (presumably streamed using \
                 chunked transfer encoding)")
         });
-    println!("  response headers:        {} bytes",
+    println!("  response headers:          {} bytes",
         muskie_info.mai_response_header_length);
-    println!("  response content length: {}",
+    println!("  response content length:   {}",
         match muskie_info.mai_response_headers.get("content-length") {
             // TODO handle cases of wrong header value type (e.g., string here)
             Some(header_value) => format!("{} bytes", header_value.as_i64()),
             None => String::from("unspecified\n    (presumably streamed using \
                 chunked transfer encoding)")
+        });
+    println!("  object bytes transferred:  {}",
+        match muskie_info.mai_bytes_transferred {
+            None => String::from("unknown"),
+            Some(b) => format!("{}", b)
         });
     println!("");
 
