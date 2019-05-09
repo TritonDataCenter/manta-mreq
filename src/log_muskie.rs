@@ -154,6 +154,15 @@ impl MuskieLogEntryHeaderValue {
     }
 }
 
+impl std::fmt::Display for MuskieLogEntryHeaderValue {
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+        match self {
+            MuskieLogEntryHeaderValue::Str(s) => write!(f, "{}", s),
+            MuskieLogEntryHeaderValue::Int(n) => write!(f, "{}", n),
+        }
+    }
+}
+
 /*
  * This type only exists for us to be able to implement our own Debug trait.
  * It would be nice to at least enforce that the values are `i64`, but that

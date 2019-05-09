@@ -104,7 +104,7 @@ pub fn mri_dump(mri : &MantaRequestInfo)
 
     // TODO should probably include "headobject"?
     if muskie_info.mai_route == "putobject" ||
-        muskie_info.mai_route == "getobject" ||
+        muskie_info.mai_route == "getstorage" ||
         muskie_info.mai_route == "deletestorage" {
         mri_dump_object_metadata(&muskie_info);
     }
@@ -154,7 +154,7 @@ pub fn mri_dump(mri : &MantaRequestInfo)
     // TODO data transfer (including headers)
 
     let nskipped = mri_dump_timeline(&mri.mri_timeline_overall, true,
-        chrono::Duration::milliseconds(0), min_duration_option);
+        chrono::Duration::milliseconds(0), min_duration_option, 0);
     if nskipped > 0 {
         println!("\nNOTE: {} timeline event{} with duration less than {} ms {} \
             not shown above.", nskipped,
@@ -167,23 +167,18 @@ pub fn mri_dump(mri : &MantaRequestInfo)
 }
 
 fn mri_dump_timeline(timeline : &timeline::Timeline, dump_header : bool,
-    base : chrono::Duration, min_duration_option : Option<chrono::Duration>)
+    base : chrono::Duration, min_duration_option : Option<chrono::Duration>,
+    depth : u8)
     -> i16
 {
     if dump_header {
-        println!("{:30} {:>6} {:>6} {:>6} {}", "WALL TIMESTAMP",
-            "TIMEms", "RELms", "ELAPms", "EVENT");
+        println!("{:13} {:>6} {:>6} {:>6} {}", "WALL TIME",
+            "rSTART", "rCURR", "ELAPSD", "EVENT");
     }
 
     let mut nskipped = 0;
 
     for event in timeline.events() {
-        /*
-         * The formatter for the timestamps does not appear to implement width
-         * specifiers, so in order to do that properly, we must first format it
-         * as a string and then separately format that string with a width
-         * specifier.
-         */
         if let Some(min_duration) = min_duration_option {
             //
             // TODO we're using 0 as a special value for important events that
@@ -196,8 +191,9 @@ fn mri_dump_timeline(timeline : &timeline::Timeline, dump_header : bool,
             }
         }
 
-        let wall_start = format!("{}", event.wall_start());
-        print!("{:30} {:6} {:6} ", wall_start, 
+        // let wall_start = format!("{}", event.wall_start());
+        let wall_start = event.wall_start().format("%T.%3fZ");
+        print!("{:13} {:6} {:6} ", wall_start,
             (base + event.relative_start()).num_milliseconds(),
             event.relative_start().num_milliseconds());
 
@@ -205,18 +201,27 @@ fn mri_dump_timeline(timeline : &timeline::Timeline, dump_header : bool,
         if let Some(subtimeline) = maybe_subtimeline {
             println!("{:>6} {} {{", "-", event.label());
             nskipped += mri_dump_timeline(subtimeline, false,
-                event.relative_start(), min_duration_option);
+                event.relative_start(), min_duration_option, depth + 1);
 
-            /* See the above comment regarding "wall_start". */
-            let wall_end = format!("{}", event.wall_end());
-            println!("{:30} {:6} {:>6} {:6} }} (subtimeline ended)",
+            let wall_end = event.wall_end().format("%T.%3fZ");
+            println!("{:13} {:6} {:>6} {:6} {:width$}}} (subtimeline ended)",
                 wall_end, (base + event.relative_start() +
                 event.duration()).num_milliseconds(), "-",
-                event.duration().num_milliseconds());
+                event.duration().num_milliseconds(), "",
+                width = (depth * 2) as usize);
         } else {
-            println!("{:6} {}", event.duration().num_milliseconds(),
-                event.label());
+            println!("{:6} {:width$}{}", event.duration().num_milliseconds(),
+                "", event.label(), width = (depth * 2) as usize);
         }
+    }
+
+    if depth == 0 {
+        println!("");
+        println!("   rSTART   relative time (in milliseconds) since the first \
+            event\n            in the whole timeline\n");
+        println!("   rCURR    relative time (in milliseconds) since the first \
+            event\n            in the current subtimeline\n");
+        println!("   ELAPSD   elapsed time (in milliseconds) for this event");
     }
 
     return nskipped;
@@ -243,7 +248,7 @@ fn mri_timelines(muskie_info : &MuskieAuditInfo)
     for handler_name in handler_names {
         let duration_us = handler_durations[handler_name].as_i64().expect(
             "timer was not a 64-bit integer");
-        muskie_timeline.prepend(&format!("muskie handler: {}", handler_name),
+        muskie_timeline.prepend(&format!("{}", handler_name),
             &chrono::Duration::microseconds(duration_us));
     }
 
@@ -299,7 +304,7 @@ fn mri_timelines(muskie_info : &MuskieAuditInfo)
         }
     }
 
-    timeline.add_timeline("muskie processing", muskie_timeline.clone());
+    timeline.add_timeline("muskie handlers", muskie_timeline.clone());
     return Ok((timeline.finish(), *muskie_timeline));
 }
 
@@ -315,5 +320,13 @@ fn mri_dump_object_metadata(mip : &MuskieAuditInfo)
     // like "/account/stor"?
     println!("  parent metadata on shard: {}",
         mip.mai_shard_parent.as_ref().unwrap_or(&String::from("unknown")));
+
+    println!("  durability level:         {}",
+        mip.mai_response_headers.get("durability-level").map_or(
+            String::from("unknown"), |x| format!("{}", x.as_i64())));
+    println!("  md5sum (HTTP):            {}",
+        mip.mai_response_headers.get("content-md5").map_or(
+            &String::from("unknown"), |x| x.as_string()));
+
     println!("");
 }
