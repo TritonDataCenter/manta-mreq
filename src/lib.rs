@@ -57,6 +57,7 @@ pub fn mri_dump(mri : &MantaRequestInfo)
     let dns_name = muskie_info.mai_req_headers["host"].string(); // XXX
     let min_duration_option = Some(chrono::Duration::milliseconds(1));
 
+    // TODO add: whether client requested keep-alive and whether it got it
     println!("MANTA CLIENT:");
     println!("  remote IP:      {}", remote_ip);
     println!("  Manta DNS name: {}", dns_name);
@@ -97,6 +98,17 @@ pub fn mri_dump(mri : &MantaRequestInfo)
         muskie_info.mai_response_headers["x-response-time"].as_i64());
     println!("      (This is the latency-to-first-byte reported by the \
         server.)");
+    println!("");
+
+    match &muskie_info.mai_error {
+        None => println!("ERROR INFORMATION: no error in log entry"),
+        Some(ref error) => {
+            println!("ERROR INFORMATION:");
+            println!("    name:    {}", error.mle_error_name);
+            println!("    message: {}", error.mle_error_message);
+            // XXX add verbose option to print stack too
+        }
+    }
     println!("");
 
     // TODO check transfer-encoding here and emit warning in weird case.  See

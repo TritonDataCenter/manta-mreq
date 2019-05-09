@@ -116,9 +116,19 @@ Next steps:
   - object delete
   - less common requests
     - responses: 404, 401/403, 408?
-    - responses: 503, 500
+    - responses: 503, 500, 507
     - job-related requests?
+    - GET /
+    - unsupported methods?
 - Consider adding the calculated latency-to-first-byte
 - Add haproxy log entry
 - Add nginx log entry
+- Add node-manta log entry?
 - Lots of XXXs and TODOs
+
+TODO Muskie bugs to file:
+- remotePort is not always present
+- We should record what error name and message we sent to the client, which is
+  not always the same as what we logged for internal purposes.
+- Is it a bug that request headers are always logged as strings, while response
+  headers may be logged as either?

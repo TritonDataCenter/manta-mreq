@@ -59,8 +59,6 @@ pub struct MuskieLogEntry {
     #[serde(rename = "operation")]      pub mle_operation : Option<String>,
     #[serde(rename = "latency")]        pub mle_latency : Option<u32>,
     #[serde(rename = "route")]          pub mle_route : Option<String>,
-    #[serde(rename = "remotePort")]     pub mle_remote_port : Option<u16>,
-    #[serde(rename = "remoteAddress")]  pub mle_remote_address : Option<String>,
 
     #[serde(rename = "logicalRemoteAddress")]
     pub mle_remote_address_logical : Option<String>,
@@ -76,6 +74,9 @@ pub struct MuskieLogEntry {
     pub mle_response_header_length : Option<u16>,
     #[serde(rename = "res")]
     pub mle_response : Option<MuskieLogEntryResponse>,
+
+    #[serde(rename = "err")]
+    pub mle_error : Option<MuskieErrorValue>,
 }
 
 #[derive(Debug, Clone, Deserialize, PartialEq)]
@@ -125,7 +126,18 @@ impl MuskieLogEntryHeaderValue {
     pub fn as_i64(&self) -> i64 {
         match self {
             MuskieLogEntryHeaderValue::Int(i64val) => *i64val,
-            _ => panic!("header value is not a number")
+            // XXX This is somewhat dubious, but the problem is that Muskie logs
+            // all request headers as a string (probably since they initially
+            // came in as strings from the client) while it logs response
+            // headers that were originally numeric as numbers.  We have to deal
+            // with this.  We could do it earlier when parsing, but it's simpler
+            // for now to parse here if needed.
+            MuskieLogEntryHeaderValue::Str(strval) => {
+                match strval.parse() {
+                    Ok(x) => x,
+                    Err(e) => panic!("header value is not a number")
+                }
+            }
         }
     }
 }
@@ -169,9 +181,23 @@ impl fmt::Debug for MuskieLogEntryTimers {
 #[derive(Debug, Clone, Deserialize, PartialEq)]
 pub struct MuskieLogEntryResponse {
     #[serde(rename = "statusCode")]
-    pub mle_response_status_code : u8, // TODO parse this as enum
+    pub mle_response_status_code : u16, // TODO parse this as enum
     #[serde(rename = "headers")]
     pub mle_response_headers : BTreeMap<String, MuskieLogEntryHeaderValue>
+}
+
+#[derive(Debug, Clone, Deserialize, PartialEq)]
+#[serde(untagged)]
+pub enum MuskieErrorValue {
+    Error(MuskieErrorObject),
+    NoError(bool)
+}
+
+#[derive(Debug, Clone, Deserialize, PartialEq)]
+pub struct MuskieErrorObject {
+    #[serde(rename = "stack")]      pub mle_error_stack : String,
+    #[serde(rename = "name")]       pub mle_error_name : String,
+    #[serde(rename = "message")]    pub mle_error_message : String
 }
 
 
@@ -188,8 +214,6 @@ pub struct MuskieAuditInfo {
     // Muskie-specific fields
     pub mai_operation : String,
     pub mai_route : String,
-    pub mai_remote_port : u16,                  // TODO can this be missing?
-    pub mai_remote_address : String,            // TODO can this be missing?
 
     pub mai_remote_address_logical : String,    // TODO can this be missing?
     pub mai_billable_operation : String,        // TODO can this be missing?
@@ -205,8 +229,10 @@ pub struct MuskieAuditInfo {
     pub mai_req_caller_login : String,          // when it's missing?
 
     pub mai_response_header_length : u16,
-    pub mai_response_status_code : u8,               // TODO parse as enum
-    pub mai_response_headers : BTreeMap<String, MuskieLogEntryHeaderValue>
+    pub mai_response_status_code : u16,               // TODO parse as enum
+    pub mai_response_headers : BTreeMap<String, MuskieLogEntryHeaderValue>,
+
+    pub mai_error : Option<MuskieErrorObject>
 }
 
 ///
@@ -234,10 +260,6 @@ pub fn mri_audit_entry(mle : &MuskieLogEntry)
         String::from("expected \"operation\" field)"))?;
     let route : &String = mle.mle_route.as_ref().ok_or(
         String::from("expected \"route\" field)"))?;
-    let remote_port : &u16 = mle.mle_remote_port.as_ref().ok_or(
-        String::from("expected \"remotePort\" field)"))?;
-    let remote_address : &String = mle.mle_remote_address.as_ref().ok_or(
-        String::from("expected \"remoteAddress\" field)"))?;
     let remote_address_logical : &String =
         mle.mle_remote_address_logical.as_ref().ok_or(
         String::from("expected \"logicalRemoteAddress\" field)"))?;
@@ -254,14 +276,23 @@ pub fn mri_audit_entry(mle : &MuskieLogEntry)
         request.mle_req_caller.as_ref().ok_or(
         String::from("expected \"req.caller\" field)"))?;
 
+    let error = match &mle.mle_error {
+        None => None,
+        Some(error_value) => match error_value {
+            MuskieErrorValue::Error(error_object) => Some(error_object.clone()),
+            MuskieErrorValue::NoError(false) => None,
+            MuskieErrorValue::NoError(true) => {
+                return Err(format!("unexpected value for error: \"true\""))
+            }
+        }
+    };
+
     return Ok(MuskieAuditInfo {
         mai_hostname : mle.mle_hostname.clone(),
         mai_pid : mle.mle_pid.to_string(),
         mai_time : wall_time,
         mai_operation : operation.clone(),
         mai_route : route.clone(),
-        mai_remote_port : *remote_port,
-        mai_remote_address : remote_address.clone(),
         mai_remote_address_logical : remote_address_logical.clone(),
         mai_billable_operation : billable_operation.clone(),
         mai_timers : request.mle_req_timers.clone(),
@@ -278,5 +309,6 @@ pub fn mri_audit_entry(mle : &MuskieLogEntry)
         mai_response_headers : response.mle_response_headers.clone(),
         mai_req_caller_uuid : caller.mle_req_caller_uuid.clone(),
         mai_req_caller_login : caller.mle_req_caller_login.clone(),
+        mai_error : error
     });
 }
