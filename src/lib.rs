@@ -59,8 +59,6 @@ pub fn mri_dump(mri : &MantaRequestInfo)
 
     println!("MANTA CLIENT:");
     println!("  remote IP:      {}", remote_ip);
-    println!("  account:        {} ({})", muskie_info.mai_req_caller_login,
-        muskie_info.mai_req_caller_uuid);
     println!("  Manta DNS name: {}", dns_name);
     println!("  (inferred from client \"Host\" header)");
     println!("  agent: {}",
@@ -75,6 +73,8 @@ pub fn mri_dump(mri : &MantaRequestInfo)
     // TODO add warning for missing x-server-name or x-server-name not matching
     println!("");
 
+    // TODO handle cases of missing headers
+    // TODO warn if server request id differs from client's?
     println!("REQUEST DETAILS:");
     println!("  request id:      {}",
         muskie_info.mai_response_headers["x-request-id"].string());
@@ -82,6 +82,9 @@ pub fn mri_dump(mri : &MantaRequestInfo)
     println!("  operation:       {}", muskie_info.mai_operation);
     println!("  billable op:     {}", muskie_info.mai_billable_operation);
     println!("  url:             {}", muskie_info.mai_req_url);
+    println!("  caller account:  {} ({})", muskie_info.mai_req_caller_login,
+        muskie_info.mai_req_caller_uuid);
+    // XXX report if the user is an operator
     println!("  owner account:   {}", muskie_info.mai_req_owner_uuid);
     println!("  route:           {}", muskie_info.mai_route);
     println!("");
@@ -94,12 +97,36 @@ pub fn mri_dump(mri : &MantaRequestInfo)
         muskie_info.mai_response_headers["x-response-time"].as_i64());
     println!("      (This is the latency-to-first-byte reported by the \
         server.)");
+    println!("");
+
+    // TODO check transfer-encoding here and emit warning in weird case.  See
+    // RFC 2616 4.3, though -- some methods don't allow bodies.  See 4.4 for how
+    // to know the body length.
+    println!("DATA TRANSFER:");
+    println!("  request headers:         {} bytes",
+        muskie_info.mai_req_header_length);
+    println!("  request content length:  {}",
+        match muskie_info.mai_req_headers.get("content-length") {
+            // TODO handle cases of wrong header value type (e.g., string here)
+            Some(header_value) => format!("{} bytes", header_value.as_i64()),
+            None => String::from("unspecified\n    (presumably streamed using \
+                chunked transfer encoding)")
+        });
+    println!("  response headers:        {} bytes",
+        muskie_info.mai_response_header_length);
+    println!("  response content length: {}",
+        match muskie_info.mai_response_headers.get("content-length") {
+            // TODO handle cases of wrong header value type (e.g., string here)
+            Some(header_value) => format!("{} bytes", header_value.as_i64()),
+            None => String::from("unspecified\n    (presumably streamed using \
+                chunked transfer encoding)")
+        });
+    println!("");
 
     // TODO shards (parent, entry)
     // TODO sharks contacted?
     // TODO data transfer (including headers)
 
-    println!("");
     let nskipped = mri_dump_timeline(&mri.mri_timeline_overall, true,
         chrono::Duration::milliseconds(0), min_duration_option);
     if nskipped > 0 {

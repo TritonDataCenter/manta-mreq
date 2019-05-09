@@ -100,14 +100,24 @@ Currently, this can dump basic information about a Muskie request, but the
 output is still very much evolving.
 
 Next steps:
-- See what else we should add to the output
-  - what other fields are already there?
-  - what about adding a summary of bytes transferred in each direction?
 - Try with other types of requests:
   - directory fetch (what I'm currently testing with)
   - directory create
-  - object fetch and create
+  - directory delete
+  - object fetch
     - will want to separate out latency-to-first-byte?
+    - add guessed bytes in and out?
+  - object upload: fixed length
+    - will want to separate out latency-to-first-byte?
+    - add guessed bytes in and out?
+  - object upload: streaming
+    - will want to separate out latency-to-first-byte?
+    - add guessed bytes in and out?
+  - object delete
+  - less common requests
+    - responses: 404, 401/403, 408?
+    - responses: 503, 500
+    - job-related requests?
 - Consider adding the calculated latency-to-first-byte
 - Add haproxy log entry
 - Add nginx log entry
