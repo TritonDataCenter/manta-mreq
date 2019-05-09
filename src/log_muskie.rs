@@ -77,6 +77,10 @@ pub struct MuskieLogEntry {
 
     #[serde(rename = "err")]
     pub mle_error : Option<MuskieErrorValue>,
+
+    #[serde(rename = "objectId")]       pub mle_objectid : Option<String>,
+    #[serde(rename = "entryShard")]     pub mle_shard_entry : Option<String>,
+    #[serde(rename = "parentShard")]    pub mle_shard_parent : Option<String>,
 }
 
 #[derive(Debug, Clone, Deserialize, PartialEq)]
@@ -238,7 +242,12 @@ pub struct MuskieAuditInfo {
     pub mai_response_status_code : u16,               // TODO parse as enum
     pub mai_response_headers : BTreeMap<String, MuskieLogEntryHeaderValue>,
 
-    pub mai_error : Option<MuskieErrorObject>
+    pub mai_error : Option<MuskieErrorObject>,
+
+    // For object-related requests
+    pub mai_objectid : Option<String>,
+    pub mai_shard_entry : Option<String>,
+    pub mai_shard_parent : Option<String>,
 }
 
 ///
@@ -318,5 +327,8 @@ pub fn mri_audit_entry(mle : &MuskieLogEntry)
         mai_req_caller_uuid : caller.mle_req_caller_uuid.clone(),
         mai_req_caller_login : caller.mle_req_caller_login.clone(),
         mai_error : error,
+        mai_objectid : mle.mle_objectid.clone(),
+        mai_shard_entry : mle.mle_shard_entry.clone(),
+        mai_shard_parent : mle.mle_shard_parent.clone()
     });
 }

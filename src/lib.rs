@@ -61,7 +61,7 @@ pub fn mri_dump(mri : &MantaRequestInfo)
     println!("MANTA CLIENT:");
     println!("  remote IP:      {}", remote_ip);
     println!("  Manta DNS name: {}", dns_name);
-    println!("  (inferred from client \"Host\" header)");
+    println!("    (inferred from client \"Host\" header)");
     println!("  agent: {}",
         muskie_info.mai_req_headers["user-agent"].as_string());
     println!("");
@@ -98,12 +98,17 @@ pub fn mri_dump(mri : &MantaRequestInfo)
         mri.mri_timeline_muskie.total_elapsed().num_milliseconds());
     println!("  x-response-time: {} ms (\"x-response-time\" header)",
         muskie_info.mai_response_headers["x-response-time"].as_i64());
-    println!("      (This is the latency-to-first-byte reported by the \
+    println!("    (This is the latency-to-first-byte reported by the \
         server.)");
     println!("");
 
+    if muskie_info.mai_route == "putobject" ||
+        muskie_info.mai_route == "getobject" {
+        mri_dump_object_metadata(&muskie_info);
+    }
+
     match &muskie_info.mai_error {
-        None => println!("ERROR INFORMATION: no error in log entry"),
+        None => println!("ERROR INFORMATION: no error found in log entry"),
         Some(ref error) => {
             println!("ERROR INFORMATION:");
             println!("    name:    {}", error.mle_error_name);
@@ -289,4 +294,19 @@ fn mri_timelines(muskie_info : &MuskieAuditInfo)
 
     timeline.add_timeline("muskie processing", muskie_timeline.clone());
     return Ok((timeline.finish(), *muskie_timeline));
+}
+
+fn mri_dump_object_metadata(mip : &MuskieAuditInfo)
+{
+    println!("MANTA OBJECT:");
+    println!("  path:                     {}", mip.mai_req_url);
+    println!("  objectid:                 {}",
+        mip.mai_objectid.as_ref().unwrap_or(&String::from("unknown")));
+    println!("  metadata on shard:        {}",
+        mip.mai_shard_entry.as_ref().unwrap_or(&String::from("unknown")));
+    // TODO explicitly note case of parent metadata being a synthetic directory
+    // like "/account/stor"?
+    println!("  parent metadata on shard: {}",
+        mip.mai_shard_parent.as_ref().unwrap_or(&String::from("unknown")));
+    println!("");
 }
