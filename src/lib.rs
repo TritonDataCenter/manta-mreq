@@ -149,27 +149,16 @@ pub fn mri_dump(mri : &MantaRequestInfo)
         });
     println!("");
 
-    // TODO shards (parent, entry)
-    // TODO sharks contacted?
-    // TODO data transfer (including headers)
-
-    let nskipped = mri_dump_timeline(&mri.mri_timeline_overall, true,
+    println!("TIMELINE:\n    starts at {}\n",
+        mri.mri_timeline_overall.events()[0].wall_start().format("%FT%T.%3fZ"));
+    mri_dump_timeline(&mri.mri_timeline_overall, true,
         chrono::Duration::milliseconds(0), min_duration_option, 0);
-    if nskipped > 0 {
-        println!("\nNOTE: {} timeline event{} with duration less than {} ms {} \
-            not shown above.", nskipped,
-            if nskipped == 1 { "" } else { "s" },
-            min_duration_option.expect(
-                "must be min_duration_option if events were filtered").
-                num_milliseconds(),
-            if nskipped == 1 { "was" } else { "were" });
-    }
 }
 
 fn mri_dump_timeline(timeline : &timeline::Timeline, dump_header : bool,
     base : chrono::Duration, min_duration_option : Option<chrono::Duration>,
     depth : u8)
-    -> i16
+    -> u16
 {
     if dump_header {
         println!("{:13} {:>6} {:>6} {:>6} {}", "WALL TIME",
@@ -208,14 +197,24 @@ fn mri_dump_timeline(timeline : &timeline::Timeline, dump_header : bool,
                 wall_end, (base + event.relative_start() +
                 event.duration()).num_milliseconds(), "-",
                 event.duration().num_milliseconds(), "",
-                width = (depth * 2) as usize);
+                width = (depth * 4) as usize);
         } else {
             println!("{:6} {:width$}{}", event.duration().num_milliseconds(),
-                "", event.label(), width = (depth * 2) as usize);
+                "", event.label(), width = (depth * 4) as usize);
         }
     }
 
     if depth == 0 {
+        if nskipped > 0 {
+            println!("\nNOTE: {} timeline event{} with duration less than {} \
+                ms {} not shown above.", nskipped,
+                if nskipped == 1 { "" } else { "s" },
+                min_duration_option.expect(
+                    "must be min_duration_option if events were filtered").
+                    num_milliseconds(),
+                if nskipped == 1 { "was" } else { "were" });
+        }
+
         println!("");
         println!("   rSTART   relative time (in milliseconds) since the first \
             event\n            in the whole timeline\n");
