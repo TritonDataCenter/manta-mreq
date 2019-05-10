@@ -27,46 +27,75 @@ entry.
 
 Here's an example:
 
-    $ ./target/debug/mreq ./testdata/muskie.log 
+    $ ./target/debug/mreq testdata/muskie-ok-object-get.log 
     MANTA CLIENT:
       remote IP:      172.20.5.18
-      account:        dap (bc8cd146-fecb-11e1-bd8a-bb6f54b49808)
       Manta DNS name: manta.staging.joyent.us
-      (inferred from client "Host" header)
+        (inferred from client "Host" header)
       agent: restify/1.4.1 (x64-darwin; v8/3.14.5.9; OpenSSL/1.0.1t) node/0.10.45
     
-    WEBAPI SERVER:  ZONE 6e59a763-6f6a-46a1-926e-90c1b7fc370b PID 783603
+    WEBAPI SERVER:  ZONE 204ac483-7e7e-4083-9ea2-c9ea22f459fd PID 969236
     
     REQUEST DETAILS:
-      request id:      36a2e294-2f5d-4859-8793-bee652ec0fff
-      method:          GET
-      operation:       getpublicstorage
-      billable op:     LIST
-      url:             /dap/public?limit=1024
-      owner account:   bc8cd146-fecb-11e1-bd8a-bb6f54b49808
-      route:           getpublicstorage
+      request id:       ec5d32fe-5ff8-43ae-a152-45fd1005afff
+      method:           GET
+      operation:        getstorage
+      billable op:      GET
+      url:              /dap/stor/1gfile.gz
+      caller account:   dap (bc8cd146-fecb-11e1-bd8a-bb6f54b49808)
+      caller privilege: unprivileged account
+      owner account:    bc8cd146-fecb-11e1-bd8a-bb6f54b49808
+      route:            getstorage
     
     RESPONSE DETAILS:
       status code:     200
-      muskie latency:  256 ms (calculated from timers)
-      x-response-time: 153 ms ("x-response-time" header)
-          (This is the latency-to-first-byte reported by the server.)
+      muskie latency:  148474 ms (calculated from timers)
+      x-response-time: 123 ms ("x-response-time" header)
+        (This is the latency-to-first-byte reported by the server.)
     
-    WALL TIMESTAMP                 TIMEms  RELms ELAPms EVENT
-    2019-04-26 21:18:01 UTC             0      0      0 client generated Date header
-    2019-04-26 21:18:01.855288 UTC    855    855      - muskie processing {
-    2019-04-26 21:18:01.855288 UTC    855      0      0 muskie began processing request
-    2019-04-26 21:18:01.856151 UTC    856      0      3 muskie handler: loadCaller
-    2019-04-26 21:18:01.859281 UTC    859      3      3 muskie handler: verifySignature
-    2019-04-26 21:18:01.863041 UTC    863      7      3 muskie handler: loadOwner
-    2019-04-26 21:18:01.866892 UTC    866     11     10 muskie handler: getMetadata
-    2019-04-26 21:18:01.878245 UTC    878     22    107 muskie handler: getDirectoryCount
-    2019-04-26 21:18:01.985449 UTC    985    130    126 muskie handler: getDirectory
-    2019-04-26 21:18:02.112 UTC      1112    256      0 muskie created audit log entry
-    2019-04-26 21:18:02.112 UTC      1112      -    256 } (subtimeline ended)
+    MANTA OBJECT:
+      path:                     /dap/stor/1gfile.gz
+      objectid:                 97c40f30-ee7e-c398-a5ae-e855c84a37c0
+      metadata on shard:        tcp://3.moray.staging.joyent.us:2020
+      parent metadata on shard: unknown
+      durability level:         2
+      md5sum (HTTP):            +D3HJFxY5l+YqaQQZ1MjOg==
     
-    NOTE: 21 timeline events with duration less than 1 ms were not shown above.
-
+    ERROR INFORMATION: no error found in log entry
+    
+    DATA TRANSFER:
+      request headers:           503 bytes
+      request content length:    unspecified
+        (presumably streamed using chunked transfer encoding)
+      response headers:          371 bytes
+      response content length:   1074069384 bytes
+      object bytes transferred:  1074069384
+    
+    TIMELINE:
+        starts at 2019-05-09T21:34:23.000Z
+    
+    WALL TIME     rSTART  rCURR ELAPSD EVENT
+    21:34:23.000Z      0      0      0 client generated Date header
+    21:34:23.507Z    507    507      - muskie handlers {
+    21:34:23.507Z    507      0      0     muskie began processing request
+    21:34:23.507Z    507      0      3     loadCaller
+    21:34:23.511Z    511      4      4     verifySignature
+    21:34:23.516Z    516      9      2     loadOwner
+    21:34:23.518Z    518     11    105     getMetadata
+    21:34:23.625Z    625    118 148356     streamFromSharks
+    21:36:51.982Z 148982 148474      0     muskie created audit log entry
+    21:36:51.982Z 148982      - 148474 } (subtimeline ended)
+    
+    NOTE: 29 timeline events with duration less than 1 ms were not shown above.
+    
+       rSTART   relative time (in milliseconds) since the first event
+                in the whole timeline
+    
+       rCURR    relative time (in milliseconds) since the first event
+                in the current subtimeline
+    
+       ELAPSD   elapsed time (in milliseconds) for this event
+    
 
 ## Goals
 
