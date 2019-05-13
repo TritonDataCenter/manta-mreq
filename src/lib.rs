@@ -109,6 +109,11 @@ pub fn mri_dump(mri : &MantaRequestInfo)
         mri_dump_object_metadata(&muskie_info);
     }
 
+    if muskie_info.mai_route == "putobject" ||
+        muskie_info.mai_route == "getstorage" {
+        mri_dump_shark_info(&muskie_info);
+    }
+
     match &muskie_info.mai_error {
         None => println!("ERROR INFORMATION: no error found in log entry"),
         Some(ref error) => {
@@ -328,4 +333,26 @@ fn mri_dump_object_metadata(mip : &MuskieAuditInfo)
             &String::from("unknown"), |x| x.as_string()));
 
     println!("");
+}
+
+fn mri_dump_shark_info(mip : &MuskieAuditInfo)
+{
+    if let None = mip.mai_sharks_contacted {
+        println!("SHARKS CONTACTED: not found in log entry");
+        println!("");
+    }
+
+    let sharks = mip.mai_sharks_contacted.as_ref().unwrap();
+    println!("SHARKS CONTACTED:");
+    println!("  {:13} {:>6} {:>6} {:>4} {}", "START", "TTFB", "TOTAL", "OK?",
+        "STOR_ID");
+    for shark in sharks {
+        println!("  {:13} {:>6} {:>6} {:>4} {}",
+            shark.mai_shark_time_start.format("%T.%3fZ"),
+            shark.mai_shark_latency_ttfb.num_milliseconds(),
+            shark.mai_shark_latency_total.num_milliseconds(),
+            if shark.mai_shark_success { "OK" } else { "FAIL" },
+            shark.mai_shark_storid);
+    }
+    println!("\n");
 }

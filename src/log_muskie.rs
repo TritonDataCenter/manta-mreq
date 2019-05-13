@@ -82,6 +82,9 @@ pub struct MuskieLogEntry {
     #[serde(rename = "entryShard")]     pub mle_shard_entry : Option<String>,
     #[serde(rename = "parentShard")]    pub mle_shard_parent : Option<String>,
 
+    #[serde(rename = "sharksContacted")]
+    pub mle_sharks_contacted : Option<Vec<MuskieLogSharkContacted>>,
+
     #[serde(rename = "bytesTransferred")]
     pub mle_bytes_transferred: Option<MuskieLogEntryMaybeNumeric>,
 }
@@ -259,6 +262,14 @@ impl MuskieLogEntryMaybeNumeric {
     }
 }
 
+#[derive(Debug, Clone, Deserialize, PartialEq)]
+pub struct MuskieLogSharkContacted {
+    #[serde(rename = "shark")]           pub mle_shark_storid : String,
+    #[serde(rename = "result")]          pub mle_shark_result : String,
+    #[serde(rename = "timeToFirstByte")] pub mle_shark_latency_ttfb : u64,
+    #[serde(rename = "timeTotal")]       pub mle_shark_latency_total : u64,
+    #[serde(rename = "_startTime")]      pub mle_shark_time_start : u64
+}
 
 ///
 /// A MuskieAuditInfo object collects the valid parts of a MuskieLogEntry that
@@ -299,6 +310,15 @@ pub struct MuskieAuditInfo {
     pub mai_shard_entry : Option<String>,
     pub mai_shard_parent : Option<String>,
     pub mai_bytes_transferred : Option<i64>,
+    pub mai_sharks_contacted : Option<Vec<MuskieAuditSharkContacted>>
+}
+
+pub struct MuskieAuditSharkContacted {
+    pub mai_shark_storid : String,
+    pub mai_shark_success : bool,
+    pub mai_shark_latency_ttfb : chrono::Duration,
+    pub mai_shark_latency_total : chrono::Duration,
+    pub mai_shark_time_start : chrono::DateTime<chrono::Utc>
 }
 
 ///
@@ -353,6 +373,8 @@ pub fn mri_audit_entry(mle : &MuskieLogEntry)
         }
     };
 
+    let sharks = mri_audit_sharks(&mle)?;
+
     return Ok(MuskieAuditInfo {
         mai_hostname : mle.mle_hostname.clone(),
         mai_pid : mle.mle_pid.to_string(),
@@ -383,5 +405,49 @@ pub fn mri_audit_entry(mle : &MuskieLogEntry)
         mai_shard_parent : mle.mle_shard_parent.clone(),
         mai_bytes_transferred : mle.mle_bytes_transferred.as_ref().map(
             |x| x.as_i64()),
+        mai_sharks_contacted : sharks
     });
+}
+
+fn mri_audit_sharks(mle : &MuskieLogEntry)
+    -> Result<Option<Vec<MuskieAuditSharkContacted>>, String>
+{
+    if let Some(ref rawsharks) = mle.mle_sharks_contacted {
+        let mut sharks : Vec<MuskieAuditSharkContacted> = Vec::new();
+
+        for rawshark in rawsharks {
+            if rawshark.mle_shark_result != "ok" &&
+                rawshark.mle_shark_result != "fail" {
+                    return Err(format!("log entry shark contacted (\"{}\"): \
+                        expected \"result\" to be \"ok\" or \"fail\",
+                        but found \"{}\"", rawshark.mle_shark_storid,
+                        rawshark.mle_shark_result));
+                }
+
+            let start_time = chrono::NaiveDateTime::from_timestamp_opt(
+                (rawshark.mle_shark_time_start / 1000) as i64,
+                (1000000 * (rawshark.mle_shark_time_start % 1000)) as u32);
+            if start_time == None {
+                return Err(format!("log entry shark contacted (\"{}\"): \
+                    unsupported millisecond timestamp: \"{}\"",
+                    rawshark.mle_shark_storid,
+                    rawshark.mle_shark_time_start));
+            }
+
+            sharks.push(MuskieAuditSharkContacted {
+                mai_shark_storid : rawshark.mle_shark_storid.clone(),
+                mai_shark_success : rawshark.mle_shark_result == "ok",
+                mai_shark_latency_ttfb : chrono::Duration::milliseconds(
+                    rawshark.mle_shark_latency_ttfb as i64),
+                mai_shark_latency_total : chrono::Duration::milliseconds(
+                    rawshark.mle_shark_latency_total as i64),
+                mai_shark_time_start : chrono::DateTime::from_utc(
+                    start_time.unwrap(), chrono::Utc)
+            });
+        }
+
+        return Ok(Some(sharks));
+    } else {
+        return Ok(None);
+    }
 }
