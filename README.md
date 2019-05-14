@@ -129,9 +129,6 @@ Currently, this can dump basic information about a Muskie request, but the
 output is still very much evolving.
 
 Next steps:
-- Add information for object-fetch requests:
-  - With this, we should be able to show an interesting timeline when we have to
-    PUT an upload to different sets of sharks
 - Try with other types of requests:
   - directory fetch (what I'm currently testing with)
   - directory create
