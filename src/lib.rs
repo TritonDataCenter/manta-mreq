@@ -121,8 +121,8 @@ pub fn mri_dump(mri : &MantaRequestInfo)
         None => println!("ERROR INFORMATION: no error found in log entry"),
         Some(ref error) => {
             println!("ERROR INFORMATION:");
-            println!("    name:    {}", error.mle_error_name);
-            println!("    message: {}", error.mle_error_message);
+            println!("  name:    {}", error.mle_error_name);
+            println!("  message: {}", error.mle_error_message);
             // XXX add verbose option to print stack too
         }
     }
@@ -324,34 +324,26 @@ fn mri_timelines(muskie_info : &MuskieAuditInfo)
 
     let mut shark_timeline = None;
     if let Some(ref sharks) = muskie_info.mai_sharks_contacted {
-        let mut last = None;
-
-        for shark in sharks {
-            let last_current = shark.mai_shark_time_start +
-                shark.mai_shark_latency_total;
-            if let Some(l) = last {
-                if last_current > l {
-                    last = Some(last_current);
-                }
-            } else {
-                last = Some(last_current);
-            }
-        }
-
-        let last_time = last.expect("no shark times found");
+        // XXX This is a bogus timestamp.  We should change the interface to
+        // not require it if you're not going to use prepend().
+        let last_time = muskie_info.mai_time;
         let mut stbuilder = timeline::TimelineBuilder::new_ending(last_time);
 
         for shark in sharks {
             stbuilder.add(&format!("\"{}\": begin", shark.mai_shark_storid),
                 &shark.mai_shark_time_start,
                 &chrono::Duration::milliseconds(0), None);
-            stbuilder.add(&format!("\"{}\": ready", shark.mai_shark_storid),
-                &(shark.mai_shark_time_start + shark.mai_shark_latency_ttfb),
-                &chrono::Duration::milliseconds(0), None);
-            stbuilder.add(&format!("\"{}\": {}", shark.mai_shark_storid,
-                if shark.mai_shark_success { "success" } else { "fail" }),
-                &(shark.mai_shark_time_start + shark.mai_shark_latency_total),
-                &chrono::Duration::milliseconds(0), None);
+            if let Some(t) = shark.mai_shark_latency_ttfb {
+                stbuilder.add(&format!("\"{}\": ready", shark.mai_shark_storid),
+                    &(shark.mai_shark_time_start + t),
+                    &chrono::Duration::milliseconds(0), None);
+            }
+            if let Some(t) = shark.mai_shark_latency_total {
+                stbuilder.add(&format!("\"{}\": {}", shark.mai_shark_storid,
+                    if shark.mai_shark_success { "success" } else { "fail" }),
+                    &(shark.mai_shark_time_start + t),
+                    &chrono::Duration::milliseconds(0), None);
+            }
         }
 
         shark_timeline = Some(stbuilder.finish());
@@ -397,8 +389,14 @@ fn mri_dump_shark_info(mip : &MuskieAuditInfo)
     for shark in sharks {
         println!("  {:13} {:>6} {:>6} {:>4} {}",
             shark.mai_shark_time_start.format("%T.%3fZ"),
-            shark.mai_shark_latency_ttfb.num_milliseconds(),
-            shark.mai_shark_latency_total.num_milliseconds(),
+            match shark.mai_shark_latency_ttfb {
+                Some(duration) => duration.num_milliseconds().to_string(),
+                None => String::from("-")
+            },
+            match shark.mai_shark_latency_total {
+                Some(duration) => duration.num_milliseconds().to_string(),
+                None => String::from("-")
+            },
             if shark.mai_shark_success { "OK" } else { "FAIL" },
             shark.mai_shark_storid);
     }

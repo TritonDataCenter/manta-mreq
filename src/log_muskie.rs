@@ -265,10 +265,13 @@ impl MuskieLogEntryMaybeNumeric {
 #[derive(Debug, Clone, Deserialize, PartialEq)]
 pub struct MuskieLogSharkContacted {
     #[serde(rename = "shark")]           pub mle_shark_storid : String,
-    #[serde(rename = "result")]          pub mle_shark_result : String,
-    #[serde(rename = "timeToFirstByte")] pub mle_shark_latency_ttfb : u64,
-    #[serde(rename = "timeTotal")]       pub mle_shark_latency_total : u64,
-    #[serde(rename = "_startTime")]      pub mle_shark_time_start : u64
+    #[serde(rename = "_startTime")]      pub mle_shark_time_start : u64,
+    #[serde(rename = "result")]
+    pub mle_shark_result : Option<String>,
+    #[serde(rename = "timeToFirstByte")]
+    pub mle_shark_latency_ttfb : Option<u64>,
+    #[serde(rename = "timeTotal")]
+    pub mle_shark_latency_total : Option<u64>,
 }
 
 ///
@@ -316,9 +319,9 @@ pub struct MuskieAuditInfo {
 pub struct MuskieAuditSharkContacted {
     pub mai_shark_storid : String,
     pub mai_shark_success : bool,
-    pub mai_shark_latency_ttfb : chrono::Duration,
-    pub mai_shark_latency_total : chrono::Duration,
-    pub mai_shark_time_start : chrono::DateTime<chrono::Utc>
+    pub mai_shark_time_start : chrono::DateTime<chrono::Utc>,
+    pub mai_shark_latency_ttfb : Option<chrono::Duration>,
+    pub mai_shark_latency_total : Option<chrono::Duration>,
 }
 
 ///
@@ -416,13 +419,16 @@ fn mri_audit_sharks(mle : &MuskieLogEntry)
         let mut sharks : Vec<MuskieAuditSharkContacted> = Vec::new();
 
         for rawshark in rawsharks {
-            if rawshark.mle_shark_result != "ok" &&
-                rawshark.mle_shark_result != "fail" {
+            let success = match &rawshark.mle_shark_result {
+                None => false,
+                Some(ref result) if result == "fail" => false,
+                Some(ref result) if result == "ok" => true,
+                Some(unknown) => {
                     return Err(format!("log entry shark contacted (\"{}\"): \
                         expected \"result\" to be \"ok\" or \"fail\",
-                        but found \"{}\"", rawshark.mle_shark_storid,
-                        rawshark.mle_shark_result));
+                        but found \"{}\"", rawshark.mle_shark_storid, unknown));
                 }
+            };
 
             let start_time = chrono::NaiveDateTime::from_timestamp_opt(
                 (rawshark.mle_shark_time_start / 1000) as i64,
@@ -434,13 +440,16 @@ fn mri_audit_sharks(mle : &MuskieLogEntry)
                     rawshark.mle_shark_time_start));
             }
 
+            let ttfb = rawshark.mle_shark_latency_ttfb.map(
+                |lat| chrono::Duration::milliseconds(lat as i64));
+            let total = rawshark.mle_shark_latency_total.map(
+                |lat| chrono::Duration::milliseconds(lat as i64));
+
             sharks.push(MuskieAuditSharkContacted {
                 mai_shark_storid : rawshark.mle_shark_storid.clone(),
-                mai_shark_success : rawshark.mle_shark_result == "ok",
-                mai_shark_latency_ttfb : chrono::Duration::milliseconds(
-                    rawshark.mle_shark_latency_ttfb as i64),
-                mai_shark_latency_total : chrono::Duration::milliseconds(
-                    rawshark.mle_shark_latency_total as i64),
+                mai_shark_success : success,
+                mai_shark_latency_ttfb : ttfb,
+                mai_shark_latency_total : total,
                 mai_shark_time_start : chrono::DateTime::from_utc(
                     start_time.unwrap(), chrono::Utc)
             });
