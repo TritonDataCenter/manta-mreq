@@ -155,7 +155,7 @@ pub fn mri_dump(mri : &MantaRequestInfo)
     println!("");
 
     println!("TIMELINE:\n    starts at {}\n",
-        mri.mri_timeline_overall.events()[0].wall_start().format("%FT%T.%3fZ"));
+        mri.mri_timeline_overall.events()[0].wall_start().format("%FT%T.%6fZ"));
     mri_dump_timeline(&mri.mri_timeline_overall, true,
         chrono::Duration::milliseconds(0), min_duration_option, 0);
 }
@@ -166,7 +166,7 @@ fn mri_dump_timeline(timeline : &timeline::Timeline, dump_header : bool,
     -> u16
 {
     if dump_header {
-        println!("{:13} {:>6} {:>6} {:>6} {}", "WALL TIME",
+        println!("{:16} {:>6} {:>6} {:>6} {}", "WALL TIME",
             "rSTART", "rCURR", "ELAPSD", "EVENT");
     }
 
@@ -186,8 +186,8 @@ fn mri_dump_timeline(timeline : &timeline::Timeline, dump_header : bool,
         }
 
         // let wall_start = format!("{}", event.wall_start());
-        let wall_start = event.wall_start().format("%T.%3fZ");
-        print!("{:13} {:6} {:6} ", wall_start,
+        let wall_start = event.wall_start().format("%T.%6fZ");
+        print!("{:16} {:6} {:6} ", wall_start,
             (base + event.relative_start()).num_milliseconds(),
             event.relative_start().num_milliseconds());
 
@@ -197,8 +197,8 @@ fn mri_dump_timeline(timeline : &timeline::Timeline, dump_header : bool,
             nskipped += mri_dump_timeline(subtimeline, false,
                 event.relative_start(), min_duration_option, depth + 1);
 
-            let wall_end = event.wall_end().format("%T.%3fZ");
-            println!("{:13} {:6} {:>6} {:6} {:width$}}} (subtimeline ended)",
+            let wall_end = event.wall_end().format("%T.%6fZ");
+            println!("{:16} {:6} {:>6} {:6} {:width$}}} (subtimeline ended)",
                 wall_end, (base + event.relative_start() +
                 event.duration()).num_milliseconds(), "-",
                 event.duration().num_milliseconds(), "",
@@ -309,6 +309,43 @@ fn mri_timelines(muskie_info : &MuskieAuditInfo)
     }
 
     timeline.add_timeline("muskie handlers", muskie_timeline.clone());
+
+    if let Some(ref sharks) = muskie_info.mai_sharks_contacted {
+        let mut last = None;
+
+        for shark in sharks {
+            let mut last_current = shark.mai_shark_time_start +
+                shark.mai_shark_latency_total;
+            if let Some(l) = last {
+                if last_current > l {
+                    last = Some(last_current);
+                }
+            } else {
+                last = Some(last_current);
+            }
+        }
+
+        let last_time = last.expect("no shark times found");
+        let mut stbuilder = timeline::TimelineBuilder::new_ending(last_time);
+
+        for shark in sharks {
+            stbuilder.add(&format!("shark \"{}\": begin connect+request",
+                shark.mai_shark_storid),
+                &shark.mai_shark_time_start,
+                &chrono::Duration::milliseconds(0), None);
+            stbuilder.add(&format!("shark \"{}\": ready to proceed",
+                shark.mai_shark_storid),
+                &(shark.mai_shark_time_start + shark.mai_shark_latency_ttfb),
+                &chrono::Duration::milliseconds(0), None);
+            stbuilder.add(&format!("shark \"{}\": subrequest completed",
+                shark.mai_shark_storid),
+                &(shark.mai_shark_time_start + shark.mai_shark_latency_total),
+                &chrono::Duration::milliseconds(0), None);
+        }
+
+        timeline.add_timeline("shark activity", Box::new(stbuilder.finish()));
+    }
+
     return Ok((timeline.finish(), *muskie_timeline));
 }
 
