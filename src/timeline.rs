@@ -58,6 +58,15 @@ impl Timeline
     }
 
     ///
+    /// Returns the start time of the timeline.
+    ///
+    pub fn wall_start(&self)
+        -> chrono::DateTime<chrono::Utc>
+    {
+        return self.tl_start;
+    }
+
+    ///
     /// Returns a vector of events in the timeline.
     /// TODO Should this be an iterator instead?
     ///
